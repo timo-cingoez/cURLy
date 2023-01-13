@@ -6,7 +6,14 @@
  */
 
 class cURLy {
+    /**
+     * @var string
+     */
     protected $url;
+
+    /**
+     * @var array
+     */
     private $header;
 
     /**
@@ -28,6 +35,10 @@ class cURLy {
      * @var bool
      */
     private $logEnabled;
+
+    /**
+     * @var string
+     */
     private $logDirectory;
 
     /**
@@ -35,21 +46,95 @@ class cURLy {
      */
     private $format;
 
-    public function __construct($url) {
+    /**
+     * cURLy constructor.
+     * @param string $url The initial URL that will be used for the cURL operations.
+     * @param array $curlOpts Optional cURL options. Not necessary for basic usage.
+     */
+    public function __construct($url, $curlOpts = []) {
         if (trim($url) === '') {
             throw new RuntimeException('cURLy - Missing URL.');
         }
 
         $this->url = $url;
+
+        $this->curlOpts = $curlOpts;
+
         // Set the baseline cURL options.
-        $this->curlOpts = [
-            CURLOPT_URL => $this->url,
-            CURLOPT_RETURNTRANSFER => 1,
-            CURLOPT_HEADER => 1
-        ];
+        $this->curlOpts[CURLOPT_URL] = $this->url;
+        $this->curlOpts[CURLOPT_RETURNTRANSFER] = 1;
+        $this->curlOpts[CURLOPT_HEADER] = 1;
     }
 
-    public function execute(string $url = '') {
+    /**
+     * Toggle whether logs should be created for requests.
+     * @param bool $bool
+     * @param string $directory
+     */
+    public function setLog(bool $bool, $directory = 'log') {
+        $this->logEnabled = $bool;
+        $this->logDirectory = $directory;
+    }
+
+    /**
+     * Send a GET Request to the configured URL.
+     * @param string $url
+     * @return bool|false|string
+     */
+    public function GET(string $url = '') {
+        return $this->execute($url);
+    }
+
+    /**
+     * Send a POST Request to the configured URL.
+     * @param array $postFields
+     * @param string $url
+     * @return bool|false|string
+     */
+    public function POST(array $postFields, string $url = '') {
+        $this->curlOpts[CURLOPT_POST] = true;
+        $this->curlOpts[CURLOPT_POSTFIELDS] = $this->preparePostFields($postFields);
+        return $this->execute($url);
+    }
+
+    /**
+     * Send a PATCH Request to the configured URL.
+     * @param array $patchFields
+     * @param string $url
+     * @return mixed
+     */
+    public function PATCH(array $patchFields, string $url = '') {
+        $this->curlOpts[CURLOPT_CUSTOMREQUEST] = 'PATCH';
+        $this->curlOpts[CURLOPT_POSTFIELDS] = $this->preparePostFields($patchFields);
+        return $this->execute($url);
+    }
+
+    /**
+     * Send a PUT Request to the configured URL.
+     * @param array $putFields
+     * @param string $url
+     * @return bool|false|string
+     */
+    public function PUT(array $putFields, string $url) {
+        $this->curlOpts[CURLOPT_CUSTOMREQUEST] = 'PUT';
+        $this->curlOpts[CURLOPT_POSTFIELDS] = $this->preparePostFields($putFields);
+        return $this->execute($url);
+    }
+
+    /**
+     * Set the format in which the post fields should be encoded.
+     * @param string $format
+     */
+    public function setFormat(string $format) {
+        $this->format = $format;
+    }
+
+    /**
+     * Set the configured cURL options, execute the request and handle the response.
+     * @param string $url
+     * @return bool|false|string
+     */
+    private function execute(string $url = '') {
         // Initialize a new cURL session.
         $curl = curl_init();
         if ($curl === false) {
@@ -111,11 +196,11 @@ class cURLy {
         }
     }
 
-    public function setLog(bool $bool, $directory = 'log') {
-        $this->logEnabled = $bool;
-        $this->logDirectory = $directory;
-    }
-
+    /**
+     * Create an individual log file for an executed request.
+     * @param string|false $response The cURL response.
+     * @return false|int File write result.
+     */
     private function writeLog($response) {
         if (mkdir($concurrentDirectory = $this->logDirectory, 0777, true) === false && is_dir($concurrentDirectory) === false) {
             throw new RuntimeException("cURLy - Log directory $concurrentDirectory was not created.");
@@ -133,55 +218,15 @@ class cURLy {
         return file_put_contents($this->logDirectory.'/'.$fileName, $log);
     }
 
+    /**
+     * Check whether the response code was positive.
+     * @param string $response
+     * @param int $httpCode
+     */
     private function analyzeResponse(string $response, int $httpCode) {
         if (in_array($httpCode, range(200, 207), true) === false) {
             throw new RunTimeException("cURLy - HTTP Error - Code: $httpCode Response: $response", $httpCode, null);
         }
-    }
-
-    /**
-     * Send a GET Request to the configured URL.
-     * @param string $url
-     * @return bool|false|string
-     */
-    public function GET(string $url = '') {
-        return $this->execute($url);
-    }
-
-    /**
-     * Send a POST Request to the configured URL.
-     * @param array $postFields
-     * @param string $url
-     * @return bool|false|string
-     */
-    public function POST(array $postFields, string $url = '') {
-        $this->curlOpts[CURLOPT_POST] = true;
-        $this->curlOpts[CURLOPT_POSTFIELDS] = $this->preparePostFields($postFields);
-        return $this->execute($url);
-    }
-
-    /**
-     * Send a PATCH Request to the configured URL.
-     * @param array $patchFields
-     * @param string $url
-     * @return mixed
-     */
-    public function PATCH(array $patchFields, string $url = '') {
-        $this->curlOpts[CURLOPT_CUSTOMREQUEST] = 'PATCH';
-        $this->curlOpts[CURLOPT_POSTFIELDS] = $this->preparePostFields($patchFields);
-        return $this->execute($url);
-    }
-
-    /**
-     * Send a PUT Request to the configured URL.
-     * @param array $putFields
-     * @param string $url
-     * @return bool|false|string
-     */
-    public function PUT(array $putFields, string $url) {
-        $this->curlOpts[CURLOPT_CUSTOMREQUEST] = 'PUT';
-        $this->curlOpts[CURLOPT_POSTFIELDS] = $this->preparePostFields($putFields);
-        return $this->execute($url);
     }
 
     /**
@@ -196,13 +241,5 @@ class cURLy {
             $postFields = http_build_query($postFields);
         }
         return $postFields;
-    }
-
-    /**
-     * Set the format in which the post fields should be encoded.
-     * @param string $format
-     */
-    public function setFormat(string $format) {
-        $this->format = $format;
     }
 }
