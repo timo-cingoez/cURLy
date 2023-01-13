@@ -51,7 +51,7 @@ class cURLy {
      * @param string $url The initial URL that will be used for the cURL operations.
      * @param array $curlOpts Optional cURL options. Not necessary for basic usage.
      */
-    public function __construct($url, $curlOpts = []) {
+    public function __construct(string $url, array $curlOpts = []) {
         if (trim($url) === '') {
             throw new RuntimeException('cURLy - Missing URL.');
         }
@@ -71,7 +71,7 @@ class cURLy {
      * @param bool $bool
      * @param string $directory
      */
-    public function setLog(bool $bool, $directory = 'log') {
+    public function setLog(bool $bool, string $directory = 'log') {
         $this->logEnabled = $bool;
         $this->logDirectory = $directory;
     }
@@ -127,6 +127,30 @@ class cURLy {
      */
     public function setFormat(string $format) {
         $this->format = $format;
+    }
+
+    /**
+     * Set the authentication method and adjust the header accordingly.
+     * @param string $authMethod The authentication method. BASIC, OAUTH
+     * @param array $authData The authentication data. [httpUsername, httpPassword] | [token]
+     */
+    private function setAuthentication(string $authMethod, array $authData) {
+        switch ($authMethod) {
+            case 'BASIC':
+                if (empty($authData['httpUsername']) || empty($authData['httpPassword'])) {
+                    throw new RuntimeException('cURLy - Missing data for BASIC authentication. (Expected: httpUsername, httpPassword)');
+                }
+                $this->curlOpts[CURLOPT_HTTPHEADER] = CURLAUTH_BASIC;
+                $this->curlOpts[CURLOPT_USERPWD] = $authData['httpUsername'].':'.$authData['httpPassword'];
+                $this->curlOpts[CURLOPT_FOLLOWLOCATION] = 1;
+                break;
+            case 'OAUTH':
+                if (empty($authData['token'])) {
+                    throw new RuntimeException('cURLy - Missing data for OAUTH authentication. (Expected: token)');
+                }
+                $this->header = ['Authentication: Bearer '.$authData['token']];
+                break;
+        }
     }
 
     /**
@@ -189,6 +213,9 @@ class cURLy {
         if (curl_setopt_array($curl, $this->curlOpts) === false) {
             throw new RuntimeException('cURLy - Error while setting cURL options.');
         }
+        if (empty($this->header) === false) {
+            curl_setopt($curl, CURLOPT_HTTPHEADER, $this->header);
+        }
         if ($this->logEnabled) {
             curl_setopt($curl, CURLOPT_VERBOSE, true);
             $this->verbose = fopen('php://temp', 'rwb+');
@@ -201,7 +228,7 @@ class cURLy {
      * @param string|false $response The cURL response.
      * @return false|int File write result.
      */
-    private function writeLog($response) {
+    private function writeLog(string $response) {
         if (mkdir($concurrentDirectory = $this->logDirectory, 0777, true) === false && is_dir($concurrentDirectory) === false) {
             throw new RuntimeException("cURLy - Log directory $concurrentDirectory was not created.");
         }
