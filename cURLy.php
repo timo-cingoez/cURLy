@@ -7,44 +7,64 @@
 
 class cURLy {
     /**
+     * The initial target URL.
      * @var string
      */
-    protected $url;
+    protected string $url;
 
     /**
+     * The request headers.
      * @var array
      */
-    private $header;
+    private array $header;
 
     /**
-     * @var array All of the cURL options that will be used for requests.
+     * All of the cURL options that will be used for requests.
+     * @var array
      */
-    private $curlOpts;
+    private array $curlOpts;
 
     /**
+     * The response headers. Used for logs.
      * @var false|string
      */
     private $responseHeader;
 
     /**
+     * Detailed request information.
      * @var false|resource
      */
     private $verbose;
 
     /**
+     * Toggles whether logs are created for requests.
      * @var bool
      */
-    private $logEnabled;
+    private bool $logEnabled = false;
 
     /**
+     * The directory in which the logs are saved.
      * @var string
      */
-    private $logDirectory;
+    private string $logDirectory;
 
     /**
-     * @var string The format in which the request data should be sent.
+     * The format in which the request data should be sent.
+     * @var string
      */
-    private $format;
+    private string $format;
+
+    /**
+     * The type in which the response should be returned ARRAY|OBJECT.
+     * @var string
+     */
+    private string $responseType = 'ARRAY';
+
+    /**
+     * Optional settings for json_decode(); depth|options
+     * @var array
+     */
+    private array $decodeOptions;
 
     /**
      * cURLy constructor.
@@ -67,19 +87,31 @@ class cURLy {
     }
 
     /**
-     * Toggle whether logs should be created for requests.
-     * @param bool $bool
-     * @param string $directory
+     * Create and return a instance of cURLy for easy method chaining.
+     * @param string $url The initial URL that will be used for the cURL operations.
+     * @param array $curlOpts Optional cURL options. Not necessary for basic usage.
+     * @return cURLy
      */
-    public function setLog(bool $bool, string $directory = 'log') {
-        $this->logEnabled = $bool;
+    public static function instance(string $url = '', array $curlOpts = []): cURLy {
+        return new self($url, $curlOpts);
+    }
+
+    /**
+     * Toggle whether logs should be created for requests.
+     * @param bool $logEnabled Whether logs should be created or not.
+     * @param string $directory The directory in which the logs should be created in.
+     * @return cURLy
+     */
+    public function setLog(bool $logEnabled, string $directory = 'log'): cURLy {
+        $this->logEnabled = $logEnabled;
         $this->logDirectory = $directory;
+        return $this;
     }
 
     /**
      * Send a GET Request to the configured URL.
-     * @param string $url
-     * @return bool|false|string
+     * @param string $url Optional URL if the endpoint is different from the initial one.
+     * @return mixed
      */
     public function GET(string $url = '') {
         return $this->execute($url);
@@ -124,17 +156,48 @@ class cURLy {
     /**
      * Set the format in which the post fields should be encoded.
      * @param string $format
+     * @return cURLy
      */
-    public function setFormat(string $format) {
+    public function setFormat(string $format): cURLy {
         $this->format = $format;
+        return $this;
+    }
+
+    /**
+     * Set the type of the response.
+     * @param string $responseType ARRAY (default)|OBJECT
+     * @param array $decodeOptions depth|options
+     * @return cURLy
+     */
+    public function setResponseType($responseType, $decodeOptions = []): cURLy {
+        $this->responseType = $responseType;
+        $this->decodeOptions = $decodeOptions;
+        return $this;
+    }
+
+    /**
+     * Parse the response. Expects JSON format.
+     * @param string $response JSON string.
+     * @return mixed
+     */
+    private function parseResponse(string $response) {
+        $assoc = $this->responseType === 'ARRAY';
+        $depth = empty($this->decodeOptions['options']) ? 512 : $this->decodeOptions['options'];
+        $options = empty($this->decodeOptions['options']) ? 0 : $this->decodeOptions['options'];
+        $parsedResponse = json_decode($response, $assoc, $depth, JSON_THROW_ON_ERROR | $options);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            return $parsedResponse;
+        }
+        throw new RuntimeException('cURLy - The response is not in a valid JSON format. ('.json_last_error_msg().')');
     }
 
     /**
      * Set the authentication method and adjust the header accordingly.
      * @param string $authMethod The authentication method. BASIC, OAUTH
      * @param array $authData The authentication data. [httpUsername, httpPassword] | [token]
+     * @return cURLy
      */
-    private function setAuthentication(string $authMethod, array $authData) {
+    private function setAuthentication(string $authMethod, array $authData): cURLy {
         switch ($authMethod) {
             case 'BASIC':
                 if (empty($authData['httpUsername']) || empty($authData['httpPassword'])) {
@@ -151,6 +214,7 @@ class cURLy {
                 $this->header = ['Authentication: Bearer '.$authData['token']];
                 break;
         }
+        return $this;
     }
 
     /**
@@ -185,7 +249,6 @@ class cURLy {
             $response = substr($response, $headerSize);
         }
 
-
         if ($this->logEnabled) {
             $this->writeLog($response);
         }
@@ -198,7 +261,7 @@ class cURLy {
         // Analyze if the response was positive.
         $this->analyzeResponse($response, $httpCode);
 
-        return $response;
+        return $this->parseResponse($response);
     }
 
     /**
@@ -206,7 +269,7 @@ class cURLy {
      * @param $curl
      * @param string $url
      */
-    private function setCurlOpts(&$curl, string $url = '') {
+    private function setCurlOpts(&$curl, string $url = ''): void {
         if (empty($url) === false) {
             $this->curlOpts[CURLOPT_URL] = $url;
         }
@@ -237,10 +300,10 @@ class cURLy {
         rewind($this->verbose);
 
         $log = stream_get_contents($this->verbose)."\r\n";
-        $log .= 'cURLy Request:: '.$this->curlOpts[CURLOPT_POSTFIELDS]."\r\n";
+        $log .= 'cURLy Request'.$this->curlOpts[CURLOPT_POSTFIELDS]."\r\n";
         $log .= "\r\n".'Response:'."\r\n".$response;
 
-        $fileName = 'cURLy_'.date("d_m_Y_H_i_s_").substr((string)microtime(), 2, 7).'txt';
+        $fileName = 'cURLy_'.date("d_m_Y_H_i_s_").substr((string)microtime(), 2, 7).'.txt';
 
         return file_put_contents($this->logDirectory.'/'.$fileName, $log);
     }
@@ -250,7 +313,7 @@ class cURLy {
      * @param string $response
      * @param int $httpCode
      */
-    private function analyzeResponse(string $response, int $httpCode) {
+    private function analyzeResponse(string $response, int $httpCode): void {
         if (in_array($httpCode, range(200, 207), true) === false) {
             throw new RunTimeException("cURLy - HTTP Error - Code: $httpCode Response: $response", $httpCode, null);
         }
