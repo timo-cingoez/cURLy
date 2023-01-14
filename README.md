@@ -1,5 +1,5 @@
 # cURLy
-A simple PHP (7.4) cURL wrapper.
+A PHP (7.4) cURL wrapper.
 
 ### Example
 ```
