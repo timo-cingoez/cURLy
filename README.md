@@ -3,7 +3,7 @@ A simple PHP (7.4) cURL wrapper.
 
 ### Example
 ```
-$cURLy = new cURLy('https://jsonplaceholder.typicode.com/todos/1', [CURLOPT_CERTINFO => true, CURLOPT_CRLF >= true]);
+$cURLy = new cURLy('https://jsonplaceholder.typicode.com/todos/1', [CURLOPT_CERTINFO => true]);
 $cURLy->setLog(true);
 $cURLy->setResponseType('OBJECT');
 $cURLy->GET();
